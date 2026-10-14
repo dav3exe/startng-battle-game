@@ -11,10 +11,12 @@ export interface Pose {
   cannon: number; // 0..1 crossbow limbs folded open
   swing: number | null; // 0..1 through the greatsword slash, null when not slashing
   swingSide: 1 | -1; // 1 forehand (his right to left), -1 the return cut
-  dodge: number | null; // 0..1 through the dodge, null when not dodging
+  dodge: number | null; // 0..1 through the dash, null when not dashing
+  roll: number | null; // 0..1 through the roll that follows a double-tapped dash
+  air: number; // 0 on the ground, 1 at the top of a jump
 }
 
-export const IDLE_POSE: Pose = { moveSpeed: 0, aim: 0, recoil: 0, cannon: 0, swing: null, swingSide: 1, dodge: null };
+export const IDLE_POSE: Pose = { moveSpeed: 0, aim: 0, recoil: 0, cannon: 0, swing: null, swingSide: 1, dodge: null, roll: null, air: 0 };
 
 export interface CharacterModel {
   root: THREE.Group;
@@ -25,6 +27,9 @@ export interface CharacterModel {
 const ease = (t: number): number => t * t * (3 - 2 * t);
 const easeIn = (t: number): number => t * t;
 const easeOut = (t: number): number => 1 - Math.pow(1 - t, 3);
+
+// Height (before the tuck) he tumbles around during a roll.
+const ROLL_PIVOT = 0.75;
 
 // Length of the swoosh behind the edge, in radians of the cut.
 const SLASH_TRAIL_RAD = 1.3;
@@ -170,7 +175,7 @@ export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
     body.rotation.x = 0.1 * Math.min(moving, 1.5);
     body.rotation.y = 0;
     body.rotation.z = Math.sin(time * 0.5) * 0.008 + Math.sin(stride) * 0.02 * Math.min(moving, 1);
-    body.scale.y = 1 + breath * 0.006;
+    body.scale.set(1, 1 + breath * 0.006, 1);
     boots.forEach((boot, i) => {
       const phase = stride + (i === 0 ? 0 : Math.PI);
       boot.position.z = 0.05 + Math.sin(phase) * 0.18 * Math.min(moving, 1.2);
@@ -205,14 +210,34 @@ export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
     swingRig.visible = pose.swing !== null;
     backSword.visible = pose.swing === null;
 
-    // Dodge: drop low and lunge.
+    // Dash: drop low and lunge.
     if (pose.dodge !== null) {
       const d = Math.sin(pose.dodge * Math.PI);
-      body.position.y -= d * 0.45;
-      body.rotation.x += d * 0.9;
+      body.position.y -= d * 0.25;
+      body.rotation.x += d * 0.55;
     }
 
-    cape.update(time, Math.min(moving / 1.7, 1) + (pose.dodge !== null ? 0.6 : 0));
+    // Roll after a double-tapped dash: tuck into a ball and tumble forward over a pivot
+    // at hip height, so the head and cloak stay above the ground.
+    if (pose.roll !== null) {
+      const tuck = Math.sin(pose.roll * Math.PI);
+      const angle = ease(pose.roll) * Math.PI * 2;
+      const scale = 1 - 0.45 * tuck;
+      const pivot = ROLL_PIVOT * scale;
+      body.scale.setScalar(scale);
+      body.rotation.set(angle, 0, 0);
+      body.position.set(0, pivot * (1 - Math.cos(angle)) + 0.25 * tuck, -pivot * Math.sin(angle));
+    }
+    // Boots stay planted in his root, so hide them while he is balled up.
+    boots.forEach((boot) => {
+      boot.visible = pose.roll === null;
+      boot.position.y = 0.06 + pose.air * 0.16;
+    });
+    // Knees up in the air.
+    if (pose.roll === null) body.rotation.x -= pose.air * 0.12;
+
+    const rushing = pose.dodge !== null || pose.roll !== null ? 0.6 : 0;
+    cape.update(time, Math.min(moving / 1.7, 1) + rushing + pose.air * 0.4);
 
     const flicker = 0.85 + 0.15 * Math.sin(time * 7.3) * Math.sin(time * 3.1);
     hood.eyes.color.copy(eyeBase).multiplyScalar(flicker);

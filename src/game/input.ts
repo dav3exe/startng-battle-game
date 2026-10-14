@@ -1,5 +1,3 @@
-import { TUNING } from './tuning';
-
 // Reads keyboard, mouse and the first connected controller into one frame of input.
 export interface InputFrame {
   move: { x: number; y: number };
@@ -9,20 +7,21 @@ export interface InputFrame {
   heavy: boolean;
   special: boolean;
   dodge: boolean;
+  jump: boolean;
   usingGamepad: boolean;
 }
 
-type Action = 'light' | 'heavy' | 'special' | 'dodge';
+type Action = 'light' | 'heavy' | 'special' | 'dodge' | 'jump';
 
 const KEY_ACTIONS: Record<string, Action> = {
   KeyJ: 'light',
   KeyK: 'heavy',
   KeyE: 'special',
   KeyL: 'special',
+  // Dash; press again mid-dash to roll on.
+  KeyC: 'dodge',
+  Space: 'jump',
 };
-
-// Space has to be double-tapped to dodge, so a stray press does not throw him into a roll.
-const DOUBLE_TAP_MS = TUNING.dodge.doubleTapMs;
 
 // Standard gamepad layout (PlayStation names; Xbox in brackets).
 const PAD = {
@@ -48,7 +47,6 @@ export class Input {
   private mouseDY = 0;
   private padPrev: boolean[] = [];
   private lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
-  private lastSpaceAt = -Infinity;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', (event) => {
@@ -56,15 +54,7 @@ export class Input {
       this.keys.add(event.code);
       const action = KEY_ACTIONS[event.code];
       if (action) this.pressed.add(action);
-      if (event.code === 'Space') {
-        event.preventDefault();
-        if (event.timeStamp - this.lastSpaceAt <= DOUBLE_TAP_MS) {
-          this.pressed.add('dodge');
-          this.lastSpaceAt = -Infinity;
-        } else {
-          this.lastSpaceAt = event.timeStamp;
-        }
-      }
+      if (event.code === 'Space') event.preventDefault();
       this.lastDevice = 'keyboard';
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
@@ -120,7 +110,8 @@ export class Input {
       if (edge(PAD.square)) this.pressed.add('light');
       if (edge(PAD.triangle) || edge(PAD.r2)) this.pressed.add('heavy');
       if (edge(PAD.r1)) this.pressed.add('special');
-      if (edge(PAD.circle) || edge(PAD.cross)) this.pressed.add('dodge');
+      if (edge(PAD.circle)) this.pressed.add('dodge');
+      if (edge(PAD.cross)) this.pressed.add('jump');
       this.padPrev = buttons;
     }
 
@@ -138,6 +129,7 @@ export class Input {
       heavy: this.pressed.has('heavy'),
       special: this.pressed.has('special'),
       dodge: this.pressed.has('dodge'),
+      jump: this.pressed.has('jump'),
       usingGamepad: this.lastDevice === 'gamepad',
     };
     this.pressed.clear();

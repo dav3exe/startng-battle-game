@@ -112,11 +112,13 @@ export class Hud {
        <div><b>Keyboard and mouse</b><br>
        WASD move · Shift sprint · Mouse look<br>
        Left click / J greatsword · Right click / K crossbow<br>
-       E cannon · Double-tap Space dodge · Esc release mouse</div>
+       E cannon · Space jump · Esc release mouse<br>
+       C dash · C twice dash and roll</div>
        <div style="margin-top:8px"><b>Controller (PlayStation)</b><br>
        Left stick move · L3 sprint · Right stick look<br>
        Square greatsword · Triangle / R2 crossbow<br>
-       R1 cannon · Circle / Cross dodge</div>`,
+       R1 cannon · Cross jump<br>
+       Circle dash · Circle twice dash and roll</div>`,
     );
 
     // Red dot in the screen centre; bolts and the cannon fly to whatever it is on.

@@ -5,7 +5,7 @@ import type { InputFrame } from './input';
 import { TUNING } from './tuning';
 
 // Light = greatsword slash, heavy = crossbow volley, special = arm cannon.
-type Action = 'none' | 'slash' | 'volley' | 'cannon' | 'dodge';
+type Action = 'none' | 'slash' | 'volley' | 'cannon' | 'dodge' | 'roll';
 
 export interface PlayerHooks {
   fireBolt: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
@@ -31,6 +31,9 @@ export class Player {
   // 1 = forehand (right to left), -1 = backhand return cut.
   private swingSide: 1 | -1 = 1;
   private lastSlashEndedAt = -Infinity;
+  private verticalSpeed = 0;
+  // Dash was pressed again mid-dash: roll on when the dash ends.
+  private rollQueued = false;
   private readonly aimPoint = new THREE.Vector3(0, 1.4, 10);
   private readonly dodgeDir = new THREE.Vector3();
   private readonly velocity = new THREE.Vector3();
@@ -41,11 +44,16 @@ export class Player {
   ) {}
 
   get invulnerable(): boolean {
+    if (this.action === 'roll') return this.actionTime <= TUNING.roll.invulnerableToS;
     return (
       this.action === 'dodge' &&
       this.actionTime >= TUNING.dodge.invulnerableFromS &&
       this.actionTime <= TUNING.dodge.invulnerableToS
     );
+  }
+
+  get grounded(): boolean {
+    return this.position.y <= 0 && this.verticalSpeed <= 0;
   }
 
   specialCooldownLeft(now: number): number {
@@ -67,6 +75,10 @@ export class Player {
     const wishAmount = Math.min(1, wish.length());
     if (wishAmount > 0) wish.normalize();
 
+    if (this.action === 'dodge' && input.dodge) this.rollQueued = true;
+    const busy = this.action === 'dodge' || this.action === 'roll' || this.action === 'cannon';
+    if (input.jump && this.grounded && !busy) this.verticalSpeed = TUNING.jump.speed;
+
     const canCancelSlash = this.action === 'slash' && this.actionTime >= TUNING.light.cancelAtS;
     if (this.action === 'none' || canCancelSlash) this.startAction(input, now, wish, forward);
 
@@ -78,15 +90,29 @@ export class Player {
     const baseSpeed = input.sprint && this.action === 'none' ? TUNING.move.sprintSpeed : TUNING.move.walkSpeed;
     if (this.action === 'dodge') {
       this.velocity.copy(this.dodgeDir).multiplyScalar(TUNING.dodge.speed);
+    } else if (this.action === 'roll') {
+      // Momentum bleeds off as he comes out of the roll.
+      const slow = 1 - 0.5 * (this.actionTime / TUNING.roll.durationS);
+      this.velocity.copy(this.dodgeDir).multiplyScalar(TUNING.roll.speed * slow);
     } else {
       this.velocity.copy(wish).multiplyScalar(baseSpeed * wishAmount * speedFactor);
     }
     this.position.addScaledVector(this.velocity, dt);
+
+    this.verticalSpeed -= TUNING.jump.gravity * dt;
+    this.position.y += this.verticalSpeed * dt;
+    if (this.position.y <= 0) {
+      this.position.y = 0;
+      this.verticalSpeed = 0;
+    }
     this.speed = this.velocity.length() / TUNING.move.walkSpeed;
 
     // Stay inside the clearing.
     const r = Math.hypot(this.position.x, this.position.z);
-    if (r > TUNING.move.arenaRadius) this.position.multiplyScalar(TUNING.move.arenaRadius / r);
+    if (r > TUNING.move.arenaRadius) {
+      this.position.x *= TUNING.move.arenaRadius / r;
+      this.position.z *= TUNING.move.arenaRadius / r;
+    }
 
     // Shooting faces the reticle; slashing follows the stick so he can cut on the move.
     let targetYaw = this.facing;
@@ -94,6 +120,9 @@ export class Player {
     if (this.action === 'volley' || this.action === 'cannon') {
       const toAim = this.aimPoint.clone().sub(this.position).setY(0);
       if (toAim.lengthSq() > 0.01) targetYaw = Math.atan2(toAim.x, toAim.z);
+    } else if (this.action === 'roll') {
+      targetYaw = Math.atan2(this.dodgeDir.x, this.dodgeDir.z);
+      turnSpeed = 20;
     } else if (wishAmount > 0.1) {
       targetYaw = Math.atan2(wish.x, wish.z);
       if (this.action === 'slash') turnSpeed = TUNING.light.turnSpeed;
@@ -114,7 +143,7 @@ export class Player {
 
   private startAction(input: InputFrame, now: number, wish: THREE.Vector3, forward: THREE.Vector3): void {
     const wasSlashing = this.action === 'slash';
-    if (input.dodge && this.dodgeCooldown === 0) {
+    if (input.dodge && this.dodgeCooldown === 0 && this.grounded) {
       if (wasSlashing) this.lastSlashEndedAt = now;
       this.begin('dodge');
       const back = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).negate();
@@ -143,6 +172,7 @@ export class Player {
     this.actionTime = 0;
     this.boltsFired = 0;
     this.actionDone = false;
+    this.rollQueued = false;
   }
 
   private runAction(dt: number, now: number): void {
@@ -185,6 +215,15 @@ export class Player {
     }
 
     if (this.action === 'dodge' && t >= TUNING.dodge.durationS) {
+      if (this.rollQueued) {
+        this.begin('roll');
+        return;
+      }
+      this.action = 'none';
+      this.dodgeCooldown = TUNING.dodge.cooldownS;
+    }
+
+    if (this.action === 'roll' && t >= TUNING.roll.durationS) {
       this.action = 'none';
       this.dodgeCooldown = TUNING.dodge.cooldownS;
     }
@@ -221,6 +260,8 @@ export class Player {
       swing: this.action === 'slash' ? Math.min(1, t / TUNING.light.durationS) : null,
       swingSide: this.swingSide,
       dodge: this.action === 'dodge' ? Math.min(1, t / TUNING.dodge.durationS) : null,
+      roll: this.action === 'roll' ? Math.min(1, t / TUNING.roll.durationS) : null,
+      air: Math.min(1, this.position.y / 1.1),
     };
   }
 }

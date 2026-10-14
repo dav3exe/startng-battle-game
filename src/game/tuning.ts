@@ -12,8 +12,16 @@ export const TUNING = {
     invulnerableFromS: 0.05,
     invulnerableToS: 0.35,
     cooldownS: 0.6,
-    // Two Space presses within this window trigger a dodge.
-    doubleTapMs: 300,
+  },
+  // Pressing dash again while dashing rolls on after it.
+  roll: {
+    durationS: 0.6,
+    speed: 6.5,
+    invulnerableToS: 0.45,
+  },
+  jump: {
+    speed: 7,
+    gravity: 22,
   },
   // Greatsword slash.
   light: {
