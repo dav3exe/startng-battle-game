@@ -1,13 +1,19 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { HOODED_SWORDSMAN } from './character/character-spec';
 import { createHoodedSwordsman } from './character/hooded-swordsman';
+import { COMBAT_RULES } from './game/combat-rules';
+import { Input } from './game/input';
+import { Player } from './game/player';
+import { Projectiles } from './game/projectiles';
+import { ThirdPersonCamera } from './game/third-person-camera';
+import { TrainingDummy } from './game/training-dummy';
+import { TUNING } from './game/tuning';
 import { buildJungle } from './scene/jungle';
-import { createOverlay } from './ui/overlay';
+import { Hud } from './ui/hud';
 
 const container = document.getElementById('app');
 if (!container) throw new Error('Missing #app container');
@@ -23,38 +29,47 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 120);
-camera.position.set(1.6, 1.55, 3.6);
-
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 1.15, 0);
-controls.enableDamping = true;
-controls.minDistance = 1.6;
-controls.maxDistance = 7;
-controls.maxPolarAngle = Math.PI * 0.52;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.6;
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 120);
+camera.position.set(0, 2.5, -4);
 
 const jungle = buildJungle(scene);
-const character = createHoodedSwordsman(HOODED_SWORDSMAN);
-scene.add(character.root);
+const model = createHoodedSwordsman(HOODED_SWORDSMAN);
+scene.add(model.root);
+
+const hud = new Hud(HOODED_SWORDSMAN);
+const dummy = new TrainingDummy(scene, new THREE.Vector3(0, 0, 7));
+const targets = [dummy];
+
+const projectiles = new Projectiles(scene, (event) => hud.spawnDamage(event.at, event.amount));
+
+const player = new Player(model, {
+  fireBolt: (origin, direction) => projectiles.fireBolt(origin, direction),
+  fireCannon: (origin, direction) => projectiles.fireCannon(origin, direction),
+  melee: (origin, facing) => {
+    for (const target of targets) {
+      if (!target.alive) continue;
+      const to = target.position.clone().sub(origin).setY(0);
+      const distance = to.length();
+      if (distance > TUNING.heavy.range + target.radius) continue;
+      if (distance > 0.001 && to.normalize().dot(facing) < TUNING.heavy.arcCos) continue;
+      target.takeDamage(COMBAT_RULES.heavy.damage);
+      hud.spawnDamage(target.position.clone().setY(1.4), COMBAT_RULES.heavy.damage);
+    }
+  },
+});
+
+const input = new Input(renderer.domElement);
+const followCamera = new ThirdPersonCamera(camera);
+
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'KeyM') dummy.strafing = !dummy.strafing;
+});
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-// High threshold: only the eyes and embers bloom.
+// High threshold: only the eyes, embers, bolts and the cannon bloom.
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.35, 0.95));
 composer.addPass(new OutputPass());
-
-let cannonTarget = 0;
-let cannonOpen = 0;
-createOverlay(HOODED_SWORDSMAN, {
-  onToggleRotate: () => {
-    controls.autoRotate = !controls.autoRotate;
-  },
-  onToggleCannon: () => {
-    cannonTarget = cannonTarget > 0 ? 0 : 1;
-  },
-});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -64,12 +79,28 @@ window.addEventListener('resize', () => {
 });
 
 const clock = new THREE.Clock();
+const cameraForward = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
-  const time = clock.getElapsedTime();
-  cannonOpen += (cannonTarget - cannonOpen) * 0.12;
-  character.arm.setCannonOpen(cannonOpen);
-  character.update(time);
-  jungle.update(time);
-  controls.update();
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const now = clock.elapsedTime;
+
+  const frame = input.frame(dt, TUNING.camera.mouseSensitivity, TUNING.camera.stickSensitivity);
+  followCamera.forward(cameraForward);
+  player.update(dt, now, frame, cameraForward);
+  followCamera.update(dt, player.position, frame.look);
+
+  dummy.update(dt, now);
+  projectiles.update(dt, targets);
+  jungle.update(now);
+
+  hud.update(dt, {
+    camera,
+    playerHealth: player.health,
+    specialLeftS: player.specialCooldownLeft(now),
+    usingGamepad: frame.usingGamepad,
+    pointerLocked: input.pointerLocked,
+    dummy: { position: dummy.position, height: dummy.height, health: dummy.health, alive: dummy.alive },
+  });
+
   composer.render();
 });

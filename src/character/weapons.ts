@@ -72,6 +72,9 @@ export function createGreatsword(colors: WeaponColors): THREE.Group {
 
 export interface IronArm {
   group: THREE.Group;
+  // Where bolts and the cannon shot leave the arm.
+  boltMuzzle: THREE.Object3D;
+  cannonMuzzle: THREE.Object3D;
   // The crossbow limbs fold open when the cannon fires (special attack).
   setCannonOpen: (amount: number) => void;
 }
@@ -176,6 +179,13 @@ export function createIronArm(colors: WeaponColors): IronArm {
   bore.position.set(0, 0, 0.42);
   forearm.add(bore);
 
+  const boltMuzzle = new THREE.Object3D();
+  boltMuzzle.position.set(0, 0.08, 0.44);
+  forearm.add(boltMuzzle);
+  const cannonMuzzle = new THREE.Object3D();
+  cannonMuzzle.position.set(0, 0, 0.46);
+  forearm.add(cannonMuzzle);
+
   const setCannonOpen = (amount: number): void => {
     const t = THREE.MathUtils.clamp(amount, 0, 1);
     limbs.forEach((pivot, index) => {
@@ -185,5 +195,5 @@ export function createIronArm(colors: WeaponColors): IronArm {
     string.visible = t < 0.1;
   };
 
-  return { group, setCannonOpen };
+  return { group, boltMuzzle, cannonMuzzle, setCannonOpen };
 }

@@ -152,7 +152,7 @@ export function createHood(color: number, eyeColor: number): Hood {
 
 export interface Cape {
   mesh: THREE.Mesh;
-  update: (time: number) => void;
+  update: (time: number, wind?: number) => void;
 }
 
 // Long black cape hanging from the shoulders. It sways in a slow wind.
@@ -182,7 +182,8 @@ export function createCape(color: number): Cape {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
 
-  const update = (time: number): void => {
+  // wind: 0 standing still, 1 running (the cape streams out behind).
+  const update = (time: number, wind = 0): void => {
     for (let i = 0; i < pos.count; i++) {
       const x = base[i * 3] ?? 0;
       const y = base[i * 3 + 1] ?? 0;
@@ -194,7 +195,8 @@ export function createCape(color: number): Cape {
         Math.sin(time * 2.1 + x * 7) * 0.015 * down;
       // Wraps around the back near the top, billows out lower down.
       const wrap = Math.cos((x / width) * Math.PI) * 0.12 * (1 - down);
-      pos.setXYZ(i, x * flare, y, -wrap - down * down * 0.28 - wave);
+      const stream = wind * down * 0.55;
+      pos.setXYZ(i, x * flare, y + stream * 0.35, -wrap - down * down * 0.28 - wave * (1 + wind * 2) - stream);
     }
     pos.needsUpdate = true;
     geometry.computeVertexNormals();

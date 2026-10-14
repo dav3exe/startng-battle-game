@@ -21,7 +21,7 @@ export function buildJungle(scene: THREE.Scene): Jungle {
     const x = gpos.getX(i);
     const z = gpos.getZ(i);
     const r = Math.hypot(x, z);
-    const h = r < 2.5 ? 0 : (Math.sin(x * 0.7) * Math.cos(z * 0.6) + Math.sin(x * 2.3 + z * 1.7) * 0.3) * 0.18;
+    const h = r < 12.5 ? 0 : (Math.sin(x * 0.7) * Math.cos(z * 0.6) + Math.sin(x * 2.3 + z * 1.7) * 0.3) * 0.18;
     gpos.setY(i, h);
   }
   ground.computeVertexNormals();
@@ -49,7 +49,7 @@ export function buildJungle(scene: THREE.Scene): Jungle {
     trunkCount * 2,
   );
   for (let i = 0; i < trunkCount; i++) {
-    const p = place(4, 34);
+    const p = place(13.5, 40);
     const scale = 0.7 + rand() * 0.8;
     dummy.position.set(p.x, 8 * scale - 0.5, p.y);
     dummy.rotation.set((rand() - 0.5) * 0.08, rand() * Math.PI, (rand() - 0.5) * 0.08);
@@ -66,7 +66,8 @@ export function buildJungle(scene: THREE.Scene): Jungle {
       canopy.setMatrixAt(i * 2 + c, dummy.matrix);
     }
   }
-  trunks.castShadow = true;
+  // Trunks stay out of the shadow map: their long moon shadows black out the clearing.
+  trunks.castShadow = false;
   trunks.receiveShadow = true;
   scene.add(trunks, canopy);
 
@@ -78,7 +79,7 @@ export function buildJungle(scene: THREE.Scene): Jungle {
     leafCount,
   );
   for (let i = 0; i < leafCount; i++) {
-    const p = place(4.5, 28);
+    const p = place(12.5, 32);
     dummy.position.set(p.x, 0.5, p.y);
     dummy.rotation.set((rand() - 0.5) * 1.2, rand() * Math.PI * 2, (rand() - 0.5) * 1.2);
     const s = 0.6 + rand() * 1.4;
@@ -97,7 +98,7 @@ export function buildJungle(scene: THREE.Scene): Jungle {
     vineCount,
   );
   for (let i = 0; i < vineCount; i++) {
-    const p = place(3, 20);
+    const p = place(13, 26);
     const length = 3 + rand() * 7;
     dummy.position.set(p.x, 12 - length / 2, p.y);
     dummy.rotation.set((rand() - 0.5) * 0.1, 0, (rand() - 0.5) * 0.1);
@@ -114,10 +115,10 @@ export function buildJungle(scene: THREE.Scene): Jungle {
   moon.position.set(-5, 12, -7);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
-  moon.shadow.camera.left = -6;
-  moon.shadow.camera.right = 6;
-  moon.shadow.camera.top = 6;
-  moon.shadow.camera.bottom = -6;
+  moon.shadow.camera.left = -14;
+  moon.shadow.camera.right = 14;
+  moon.shadow.camera.top = 14;
+  moon.shadow.camera.bottom = -14;
   moon.shadow.bias = -0.0005;
   scene.add(moon);
 
@@ -129,28 +130,12 @@ export function buildJungle(scene: THREE.Scene): Jungle {
   fill.position.set(2, 3, 6);
   scene.add(fill);
 
-  // A faint shaft of moonlight falling through the canopy.
-  const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.9, 2.4, 14, 32, 1, true),
-    new THREE.MeshBasicMaterial({
-      color: 0x6f8f9c,
-      transparent: true,
-      opacity: 0.045,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    }),
-  );
-  shaft.position.set(-0.4, 7, -0.6);
-  shaft.rotation.z = 0.18;
-  scene.add(shaft);
-
   // Drifting embers.
   const emberCount = 260;
   const emberPositions = new Float32Array(emberCount * 3);
   const emberSpeed = new Float32Array(emberCount);
   for (let i = 0; i < emberCount; i++) {
-    const p = place(0.6, 9);
+    const p = place(0.6, 14);
     emberPositions[i * 3] = p.x;
     emberPositions[i * 3 + 1] = rand() * 6;
     emberPositions[i * 3 + 2] = p.y;
