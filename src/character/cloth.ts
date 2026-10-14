@@ -89,40 +89,63 @@ export interface Hood {
 export function createHood(color: number, eyeColor: number): Hood {
   const group = new THREE.Group();
   const radius = 0.19;
-  const opening = 1.15;
+  // Face window, measured on the plain sphere: half-width as an angle from the front,
+  // and the brow line as a height (radius = 1). The top sits just above the eyes.
+  const windowHalfAngle = 0.6;
+  const brow = 0.16;
 
-  const shell = new THREE.SphereGeometry(
-    radius,
-    48,
-    32,
-    Math.PI / 2 + opening / 2,
-    Math.PI * 2 - opening,
-    0,
-    Math.PI * 0.78,
-  );
+  const shell = new THREE.SphereGeometry(radius, 64, 40, 0, Math.PI * 2, 0, Math.PI * 0.78);
   const pos = shell.attributes.position as THREE.BufferAttribute;
+
+  // Keep the undeformed sphere position on each vertex; the material cuts the window from it.
+  shell.setAttribute('aSphere', new THREE.BufferAttribute(Float32Array.from(pos.array as Float32Array), 3));
+
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i);
     let y = pos.getY(i);
     let z = pos.getZ(i);
-    // Pull the crown up and back into a point.
+    const angle = Math.atan2(x, z);
+    // Round over the skull, with only a small peak where the cloth gathers at the crown.
     if (y > 0) {
       const t = y / radius;
-      y += 0.09 * t * t * t;
-      z -= 0.07 * t * t;
+      const peak = Math.max(0, (t - 0.7) / 0.3) ** 2;
+      y += 0.015 * t * t * t + 0.035 * peak;
+      z -= 0.03 * t * t + 0.045 * peak;
     }
     // Hood front overhangs the face.
     if (z > 0) z += 0.03 * Math.max(0, y / radius);
+    // The brim over the eyes hangs forward and a little down, with a loose uneven lip.
+    const aboveBrow = y / radius - brow;
+    if (z > 0 && Math.abs(angle) < windowHalfAngle + 0.25 && aboveBrow > -0.05 && aboveBrow < 0.3) {
+      const lip = 1 - Math.min(1, Math.max(0, aboveBrow) / 0.3);
+      z += 0.028 * lip;
+      y -= 0.012 * lip - 0.004 * lip * Math.sin(angle * 11);
+    }
     x *= 1.05;
     pos.setXYZ(i, x, y, z);
   }
   shell.computeVertexNormals();
 
-  const shellMesh = new THREE.Mesh(
-    shell,
-    new THREE.MeshStandardMaterial({ color, roughness: 0.88, side: THREE.DoubleSide }),
-  );
-  shellMesh.scale.set(1, 1.22, 1.12);
+  // The face window is cut per pixel, so its edge is a clean arch instead of stair-stepped
+  // triangles: full brow height in the middle, curving down at the sides.
+  const shellMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.88, side: THREE.DoubleSide });
+  shellMaterial.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aSphere;\nvarying vec3 vSphere;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSphere = aSphere;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSphere;')
+      .replace(
+        'void main() {',
+        `void main() {
+          float hoodAngle = atan(vSphere.x, vSphere.z);
+          float hoodSide = hoodAngle / ${windowHalfAngle.toFixed(3)};
+          if (abs(hoodSide) < 1.0 && vSphere.y / ${radius.toFixed(3)} < ${brow.toFixed(3)} - 0.32 * hoodSide * hoodSide) discard;`,
+      );
+  };
+
+  const shellMesh = new THREE.Mesh(shell, shellMaterial);
+  shellMesh.scale.set(1, 1.08, 1.1);
   shellMesh.castShadow = true;
   group.add(shellMesh);
 
@@ -131,7 +154,7 @@ export function createHood(color: number, eyeColor: number): Hood {
     new THREE.SphereGeometry(radius * 0.86, 32, 24),
     new THREE.MeshBasicMaterial({ color: 0x000000 }),
   );
-  voidMesh.scale.set(1, 1.15, 1);
+  voidMesh.scale.set(1, 1.04, 1);
   voidMesh.position.z = -0.01;
   group.add(voidMesh);
 
@@ -152,7 +175,7 @@ export function createHood(color: number, eyeColor: number): Hood {
 
 export interface Cape {
   mesh: THREE.Mesh;
-  update: (time: number) => void;
+  update: (time: number, wind?: number) => void;
 }
 
 // Long black cape hanging from the shoulders. It sways in a slow wind.
@@ -182,7 +205,8 @@ export function createCape(color: number): Cape {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
 
-  const update = (time: number): void => {
+  // wind: 0 standing still, 1 running (the cape streams out behind).
+  const update = (time: number, wind = 0): void => {
     for (let i = 0; i < pos.count; i++) {
       const x = base[i * 3] ?? 0;
       const y = base[i * 3 + 1] ?? 0;
@@ -194,7 +218,8 @@ export function createCape(color: number): Cape {
         Math.sin(time * 2.1 + x * 7) * 0.015 * down;
       // Wraps around the back near the top, billows out lower down.
       const wrap = Math.cos((x / width) * Math.PI) * 0.12 * (1 - down);
-      pos.setXYZ(i, x * flare, y, -wrap - down * down * 0.28 - wave);
+      const stream = wind * down * 0.55;
+      pos.setXYZ(i, x * flare, y + stream * 0.35, -wrap - down * down * 0.28 - wave * (1 + wind * 2) - stream);
     }
     pos.needsUpdate = true;
     geometry.computeVertexNormals();
