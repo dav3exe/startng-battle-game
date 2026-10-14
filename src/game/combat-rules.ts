@@ -2,15 +2,18 @@
 // Only looks and animations differ between characters.
 export const COMBAT_RULES = {
   maxHealth: 100,
+  // Light attack: greatsword slash.
   light: {
+    damage: 10,
+  },
+  // Heavy attack: crossbow volley.
+  heavy: {
     damagePerHit: 5,
     hits: 3,
     // Time between bolts, so a target can dodge after the first one.
     intervalMs: 220,
   },
-  heavy: {
-    damage: 10,
-  },
+  // Special: arm cannon.
   special: {
     damage: 20,
     cooldownMs: 60_000,

@@ -44,6 +44,7 @@ export class Hud {
   private readonly dummyBar: HTMLDivElement;
   private readonly dummyFill: HTMLDivElement;
   private readonly prompt: HTMLDivElement;
+  private readonly reticle: HTMLDivElement;
   private readonly help: HTMLDivElement;
   private readonly keyLabels: HTMLSpanElement[] = [];
   private readonly specialSlot: HTMLDivElement;
@@ -85,8 +86,8 @@ export class Hud {
       return box;
     };
     const { light, heavy, special } = COMBAT_RULES;
-    slot('Crossbow', `${light.hits} × ${light.damagePerHit} dmg`);
-    slot('Greatsword', `${heavy.damage} dmg`);
+    slot('Greatsword', `${light.damage} dmg`);
+    slot('Crossbow', `${heavy.hits} × ${heavy.damagePerHit} dmg`);
     this.specialSlot = slot('Arm cannon', `${special.damage} dmg · ${special.cooldownMs / 1000}s`);
     this.specialShade = document.createElement('div');
     this.specialShade.style.cssText = 'position:absolute;left:0;bottom:0;width:100%;height:0;background:rgba(0,0,0,0.6)';
@@ -110,12 +111,17 @@ export class Hud {
       `<div style="color:#e6e0d8;font-size:13px;margin-bottom:6px">Controls</div>
        <div><b>Keyboard and mouse</b><br>
        WASD move · Shift sprint · Mouse look<br>
-       Left click / J crossbow · Right click / K greatsword<br>
-       E cannon · Space dodge · Esc release mouse</div>
-       <div style="margin-top:8px"><b>Controller</b><br>
+       Left click / J greatsword · Right click / K crossbow<br>
+       E cannon · Double-tap Space dodge · Esc release mouse</div>
+       <div style="margin-top:8px"><b>Controller (PlayStation)</b><br>
        Left stick move · L3 sprint · Right stick look<br>
-       RT / X crossbow · Y greatsword · RB cannon<br>
-       A / B dodge</div>`,
+       Square greatsword · Triangle / R2 crossbow<br>
+       R1 cannon · Circle / Cross dodge</div>`,
+    );
+
+    // Red dot in the screen centre; bolts and the cannon fly to whatever it is on.
+    this.reticle = el(
+      'position:fixed;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;border-radius:50%;background:#ff2a1a;box-shadow:0 0 4px rgba(255,40,20,0.8);pointer-events:none;display:none',
     );
 
     window.addEventListener('keydown', (event) => {
@@ -144,7 +150,9 @@ export class Hud {
     this.specialShade.style.height = `${(left / total) * 100}%`;
     this.specialTimer.textContent = left > 0 ? `${Math.ceil(left)}` : '';
 
-    this.prompt.style.display = state.pointerLocked || state.usingGamepad ? 'none' : 'block';
+    const playing = state.pointerLocked || state.usingGamepad;
+    this.prompt.style.display = playing ? 'none' : 'block';
+    this.reticle.style.display = playing ? 'block' : 'none';
 
     const top = state.dummy.position.clone().setY(state.dummy.position.y + state.dummy.height + 0.35);
     const screen = this.toScreen(top, state.camera);
@@ -176,7 +184,7 @@ export class Hud {
 
   private setKeyLabels(gamepad: boolean): void {
     this.gamepadLabels = gamepad;
-    const labels = gamepad ? ['RT / X', 'Y', 'RB'] : ['LMB / J', 'RMB / K', 'E'];
+    const labels = gamepad ? ['Square', 'Triangle / R2', 'R1'] : ['LMB / J', 'RMB / K', 'E'];
     this.keyLabels.forEach((span, i) => {
       span.textContent = labels[i] ?? '';
     });

@@ -50,9 +50,9 @@ export class Projectiles {
     this.scene.add(group);
     this.shots.push({
       mesh: group,
-      velocity: direction.clone().normalize().multiplyScalar(TUNING.light.boltSpeed),
+      velocity: direction.clone().normalize().multiplyScalar(TUNING.heavy.boltSpeed),
       travelled: 0,
-      range: TUNING.light.boltRange,
+      range: TUNING.heavy.boltRange,
       radius: 0.08,
       kind: 'bolt',
     });
@@ -87,8 +87,8 @@ export class Projectiles {
 
       if (hit || expired) {
         if (shot.kind === 'bolt' && hit) {
-          hit.takeDamage(COMBAT_RULES.light.damagePerHit);
-          this.onDamage({ amount: COMBAT_RULES.light.damagePerHit, at: shot.mesh.position.clone() });
+          hit.takeDamage(COMBAT_RULES.heavy.damagePerHit);
+          this.onDamage({ amount: COMBAT_RULES.heavy.damagePerHit, at: shot.mesh.position.clone() });
         }
         if (shot.kind === 'cannon') this.explode(shot.mesh.position.clone(), targets);
         this.scene.remove(shot.mesh);

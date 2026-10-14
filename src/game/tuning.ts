@@ -12,22 +12,32 @@ export const TUNING = {
     invulnerableFromS: 0.05,
     invulnerableToS: 0.35,
     cooldownS: 0.6,
+    // Two Space presses within this window trigger a dodge.
+    doubleTapMs: 300,
   },
+  // Greatsword slash.
   light: {
+    durationS: 0.48,
+    hitAtS: 0.2,
+    // From here another slash (the return cut) or a dodge can cut the recovery short.
+    cancelAtS: 0.32,
+    // A slash started this soon after the last one swings back the other way.
+    comboWindowS: 0.3,
+    range: 2.6,
+    // cos of half the swing arc in front of him (~65 degrees each side).
+    arcCos: 0.42,
+    moveFactor: 0.9,
+    turnSpeed: 9,
+  },
+  // Crossbow volley.
+  heavy: {
     durationS: 0.95,
     firstBoltAtS: 0.1,
     moveFactor: 0.5,
     boltSpeed: 30,
     boltRange: 32,
   },
-  heavy: {
-    durationS: 0.9,
-    hitAtS: 0.42,
-    range: 2.6,
-    // cos of half the swing arc in front of him (~65 degrees each side).
-    arcCos: 0.42,
-    moveFactor: 0.15,
-  },
+  // Arm cannon.
   special: {
     durationS: 1.15,
     fireAtS: 0.45,
@@ -43,5 +53,7 @@ export const TUNING = {
     stickSensitivity: 2.6,
     minPitch: -0.35,
     maxPitch: 0.9,
+    // How far the reticle looks for something to aim at.
+    aimRange: 40,
   },
 } as const;

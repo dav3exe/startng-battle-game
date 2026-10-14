@@ -20,8 +20,8 @@ export interface CharacterSpec {
 export const HOODED_SWORDSMAN: CharacterSpec = {
   name: 'The Hooded Swordsman',
   attacks: {
-    light: 'Repeating crossbow: three bolts in quick succession',
-    heavy: 'Greatsword swing',
+    light: 'Greatsword slash',
+    heavy: 'Repeating crossbow: three bolts in quick succession',
     special: 'Arm cannon: the crossbow opens and fires',
   },
   colors: {

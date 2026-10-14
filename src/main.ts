@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { HOODED_SWORDSMAN } from './character/character-spec';
 import { createHoodedSwordsman } from './character/hooded-swordsman';
+import { findAimPoint } from './game/aim';
 import { COMBAT_RULES } from './game/combat-rules';
 import { Input } from './game/input';
 import { Player } from './game/player';
@@ -50,10 +51,10 @@ const player = new Player(model, {
       if (!target.alive) continue;
       const to = target.position.clone().sub(origin).setY(0);
       const distance = to.length();
-      if (distance > TUNING.heavy.range + target.radius) continue;
-      if (distance > 0.001 && to.normalize().dot(facing) < TUNING.heavy.arcCos) continue;
-      target.takeDamage(COMBAT_RULES.heavy.damage);
-      hud.spawnDamage(target.position.clone().setY(1.4), COMBAT_RULES.heavy.damage);
+      if (distance > TUNING.light.range + target.radius) continue;
+      if (distance > 0.001 && to.normalize().dot(facing) < TUNING.light.arcCos) continue;
+      target.takeDamage(COMBAT_RULES.light.damage);
+      hud.spawnDamage(target.position.clone().setY(1.4), COMBAT_RULES.light.damage);
     }
   },
 });
@@ -80,13 +81,19 @@ window.addEventListener('resize', () => {
 
 const clock = new THREE.Clock();
 const cameraForward = new THREE.Vector3();
+const aimRay = new THREE.Ray();
+const aimPoint = new THREE.Vector3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = clock.elapsedTime;
 
   const frame = input.frame(dt, TUNING.camera.mouseSensitivity, TUNING.camera.stickSensitivity);
   followCamera.forward(cameraForward);
-  player.update(dt, now, frame, cameraForward);
+  // What the red dot is on. Anything between the camera and him is ignored.
+  aimRay.origin.copy(camera.position);
+  camera.getWorldDirection(aimRay.direction);
+  findAimPoint(aimRay, targets, camera.position.distanceTo(player.position), TUNING.camera.aimRange, aimPoint);
+  player.update(dt, now, frame, cameraForward, aimPoint);
   followCamera.update(dt, player.position, frame.look);
 
   dummy.update(dt, now);

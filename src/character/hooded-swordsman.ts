@@ -9,11 +9,12 @@ export interface Pose {
   aim: number; // 0..1 crossbow raised
   recoil: number; // 0..1 kick after a bolt or the cannon
   cannon: number; // 0..1 crossbow limbs folded open
-  swing: number | null; // 0..1 through the greatsword swing, null when not swinging
+  swing: number | null; // 0..1 through the greatsword slash, null when not slashing
+  swingSide: 1 | -1; // 1 forehand (his right to left), -1 the return cut
   dodge: number | null; // 0..1 through the dodge, null when not dodging
 }
 
-export const IDLE_POSE: Pose = { moveSpeed: 0, aim: 0, recoil: 0, cannon: 0, swing: null, dodge: null };
+export const IDLE_POSE: Pose = { moveSpeed: 0, aim: 0, recoil: 0, cannon: 0, swing: null, swingSide: 1, dodge: null };
 
 export interface CharacterModel {
   root: THREE.Group;
@@ -22,7 +23,47 @@ export interface CharacterModel {
 }
 
 const ease = (t: number): number => t * t * (3 - 2 * t);
+const easeIn = (t: number): number => t * t;
 const easeOut = (t: number): number => 1 - Math.pow(1 - t, 3);
+
+// Length of the swoosh behind the edge, in radians of the cut.
+const SLASH_TRAIL_RAD = 1.3;
+
+interface SlashKey {
+  at: number; // 0..1 through the slash
+  yaw: number; // sweep angle of the arm in the plane of the cut
+  twist: number; // torso turn that drives the cut
+  lean: number; // forward lean into the cut
+  curve: (t: number) => number; // easing into this key
+}
+
+// Forehand slash. The strike speeds up into contact (hit lands at ~0.42) and the
+// follow-through carries past it, so the cut reads as heavy steel, not a wave.
+const SLASH_KEYS: readonly SlashKey[] = [
+  { at: 0, yaw: -0.7, twist: 0, lean: 0, curve: ease },
+  { at: 0.24, yaw: -2.25, twist: -0.38, lean: -0.04, curve: easeOut },
+  { at: 0.5, yaw: 1.6, twist: 0.45, lean: 0.2, curve: easeIn },
+  { at: 0.66, yaw: 1.95, twist: 0.5, lean: 0.16, curve: easeOut },
+  { at: 1, yaw: 1.1, twist: 0.08, lean: 0.02, curve: ease },
+];
+
+function slashKey(p: number): { yaw: number; twist: number; lean: number; trail: number } {
+  let i = 1;
+  while (i < SLASH_KEYS.length - 1 && (SLASH_KEYS[i]?.at ?? 1) < p) i++;
+  const from = SLASH_KEYS[i - 1] ?? SLASH_KEYS[0];
+  const to = SLASH_KEYS[i] ?? from;
+  if (!from || !to) return { yaw: 0, twist: 0, lean: 0, trail: 0 };
+  const span = Math.max(to.at - from.at, 1e-6);
+  const t = to.curve(THREE.MathUtils.clamp((p - from.at) / span, 0, 1));
+  // Swoosh only while the blade is moving fast: from the end of the wind-up to the follow-through.
+  const strike = (p - 0.24) / (0.66 - 0.24);
+  return {
+    yaw: THREE.MathUtils.lerp(from.yaw, to.yaw, t),
+    twist: THREE.MathUtils.lerp(from.twist, to.twist, t),
+    lean: THREE.MathUtils.lerp(from.lean, to.lean, t),
+    trail: strike > 0 && strike < 1 ? Math.sin(strike * Math.PI) : 0,
+  };
+}
 
 // Builds the character from its spec. Faces +z; about 1.95 m tall to the tip of the hood.
 export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
@@ -49,12 +90,17 @@ export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
   backSword.rotation.set(0.12, 0, 0.46);
   body.add(backSword);
 
-  // Right arm and a second sword, shown only while swinging.
+  // Right arm and a second sword, shown only while slashing. The outer group tilts the plane
+  // of the cut (a diagonal slash); the inner rig sweeps the blade through that plane.
+  const swingPlane = new THREE.Group();
+  swingPlane.position.set(-0.34, 1.36, 0.04);
+  // Tilted so the forehand runs from high on his right to low on his left.
+  swingPlane.rotation.z = -0.5;
+  body.add(swingPlane);
+
   const swingRig = new THREE.Group();
-  swingRig.position.set(-0.34, 1.36, 0.04);
-  swingRig.rotation.order = 'YXZ';
   swingRig.visible = false;
-  body.add(swingRig);
+  swingPlane.add(swingRig);
 
   const sleeve = new THREE.Mesh(
     new THREE.CylinderGeometry(0.06, 0.075, 0.56, 12),
@@ -73,9 +119,28 @@ export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
 
   const handSword = createGreatsword(spec.colors);
   handSword.position.z = 0.6;
-  // Blade points forward with its flat side vertical, so the edge leads the swing.
-  handSword.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
+  // Blade points along the arm with its flat lying in the swing plane, so the edge leads the cut.
+  handSword.rotation.x = -Math.PI / 2;
   swingRig.add(handSword);
+
+  // Faint swoosh that trails the edge through the fast part of the cut.
+  const trailPivot = new THREE.Group();
+  swingPlane.add(trailPivot);
+  const trailMaterial = new THREE.MeshBasicMaterial({
+    color: 0xc4d0d6,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const trail = new THREE.Mesh(
+    new THREE.RingGeometry(1.25, 2.2, 24, 1, -Math.PI / 2 - SLASH_TRAIL_RAD, SLASH_TRAIL_RAD),
+    trailMaterial,
+  );
+  trail.rotation.x = -Math.PI / 2;
+  trailPivot.add(trail);
+  trailPivot.visible = false;
 
   // Iron left arm comes out of the cloak with the crossbow raised.
   const arm = createIronArm(spec.colors);
@@ -120,26 +185,22 @@ export function createHoodedSwordsman(spec: CharacterSpec): CharacterModel {
     arm.group.position.z -= pose.recoil * 0.06;
     arm.setCannonOpen(pose.cannon);
 
-    // Greatsword swing: wind up to the right, cut across to the left.
+    // Greatsword slash: coil back, whip the edge through the target, follow through, recover.
+    // The return cut is the same motion mirrored, so it rises from his left back to his right.
     if (pose.swing !== null) {
-      const p = pose.swing;
-      let yaw: number;
-      let raise: number;
-      if (p < 0.35) {
-        const a = ease(p / 0.35);
-        yaw = THREE.MathUtils.lerp(-0.3, -2.0, a);
-        raise = THREE.MathUtils.lerp(0, 0.55, a);
-      } else if (p < 0.55) {
-        const b = easeOut((p - 0.35) / 0.2);
-        yaw = THREE.MathUtils.lerp(-2.0, 1.7, b);
-        raise = THREE.MathUtils.lerp(0.55, -0.15, b);
-      } else {
-        const c = ease((p - 0.55) / 0.45);
-        yaw = THREE.MathUtils.lerp(1.7, 1.0, c);
-        raise = THREE.MathUtils.lerp(-0.15, 0.1, c);
-      }
-      swingRig.rotation.set(-raise, yaw, 0);
-      body.rotation.y = yaw * 0.18;
+      const key = slashKey(pose.swing);
+      swingPlane.scale.x = pose.swingSide;
+      swingRig.rotation.y = key.yaw;
+      body.rotation.y = key.twist * pose.swingSide;
+      body.rotation.x += key.lean;
+      body.position.z = key.lean * 0.5;
+
+      trailPivot.rotation.y = key.yaw;
+      trailPivot.visible = key.trail > 0;
+      trailMaterial.opacity = key.trail * 0.32;
+    } else {
+      body.position.z = 0;
+      trailPivot.visible = false;
     }
     swingRig.visible = pose.swing !== null;
     backSword.visible = pose.swing === null;
