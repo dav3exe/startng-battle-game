@@ -89,30 +89,62 @@ export interface Hood {
 export function createHood(color: number, eyeColor: number): Hood {
   const group = new THREE.Group();
   const radius = 0.19;
-  const opening = 1.15;
+  // Face window, measured on the plain sphere: half-width as an angle from the front,
+  // and the brow line as a height (radius = 1). The top sits just above the eyes.
+  const windowHalfAngle = 0.6;
+  const brow = 0.16;
 
-  const shell = new THREE.SphereGeometry(
-    radius,
-    48,
-    32,
-    Math.PI / 2 + opening / 2,
-    Math.PI * 2 - opening,
-    0,
-    Math.PI * 0.78,
-  );
+  const shell = new THREE.SphereGeometry(radius, 64, 40, 0, Math.PI * 2, 0, Math.PI * 0.78);
   const pos = shell.attributes.position as THREE.BufferAttribute;
+
+  // Arch-shaped window: full brow height in the middle, curving down at the sides.
+  const inWindow = (x: number, y: number, z: number): boolean => {
+    const angle = Math.atan2(x, z);
+    if (Math.abs(angle) > windowHalfAngle) return false;
+    const side = angle / windowHalfAngle;
+    return y / radius < brow - 0.32 * side * side;
+  };
+
+  // Cut the window out of the closed shell, so the crown stays covered.
+  const index = shell.index;
+  if (index) {
+    const kept: number[] = [];
+    for (let i = 0; i < index.count; i += 3) {
+      const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
+      let cx = 0;
+      let cy = 0;
+      let cz = 0;
+      for (const v of tri) {
+        cx += pos.getX(v) / 3;
+        cy += pos.getY(v) / 3;
+        cz += pos.getZ(v) / 3;
+      }
+      if (!inWindow(cx, cy, cz)) kept.push(...tri);
+    }
+    shell.setIndex(kept);
+  }
+
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i);
     let y = pos.getY(i);
     let z = pos.getZ(i);
-    // Pull the crown up and back into a point.
+    const angle = Math.atan2(x, z);
+    // Round over the skull, with only a small peak where the cloth gathers at the crown.
     if (y > 0) {
       const t = y / radius;
-      y += 0.09 * t * t * t;
-      z -= 0.07 * t * t;
+      const peak = Math.max(0, (t - 0.7) / 0.3) ** 2;
+      y += 0.015 * t * t * t + 0.035 * peak;
+      z -= 0.03 * t * t + 0.045 * peak;
     }
     // Hood front overhangs the face.
     if (z > 0) z += 0.03 * Math.max(0, y / radius);
+    // The brim over the eyes hangs forward and a little down, with a loose uneven lip.
+    const aboveBrow = y / radius - brow;
+    if (z > 0 && Math.abs(angle) < windowHalfAngle + 0.25 && aboveBrow > -0.05 && aboveBrow < 0.3) {
+      const lip = 1 - Math.min(1, Math.max(0, aboveBrow) / 0.3);
+      z += 0.028 * lip;
+      y -= 0.012 * lip - 0.004 * lip * Math.sin(angle * 11);
+    }
     x *= 1.05;
     pos.setXYZ(i, x, y, z);
   }
@@ -122,7 +154,7 @@ export function createHood(color: number, eyeColor: number): Hood {
     shell,
     new THREE.MeshStandardMaterial({ color, roughness: 0.88, side: THREE.DoubleSide }),
   );
-  shellMesh.scale.set(1, 1.22, 1.12);
+  shellMesh.scale.set(1, 1.08, 1.1);
   shellMesh.castShadow = true;
   group.add(shellMesh);
 
@@ -131,7 +163,7 @@ export function createHood(color: number, eyeColor: number): Hood {
     new THREE.SphereGeometry(radius * 0.86, 32, 24),
     new THREE.MeshBasicMaterial({ color: 0x000000 }),
   );
-  voidMesh.scale.set(1, 1.15, 1);
+  voidMesh.scale.set(1, 1.04, 1);
   voidMesh.position.z = -0.01;
   group.add(voidMesh);
 
