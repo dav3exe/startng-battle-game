@@ -97,32 +97,8 @@ export function createHood(color: number, eyeColor: number): Hood {
   const shell = new THREE.SphereGeometry(radius, 64, 40, 0, Math.PI * 2, 0, Math.PI * 0.78);
   const pos = shell.attributes.position as THREE.BufferAttribute;
 
-  // Arch-shaped window: full brow height in the middle, curving down at the sides.
-  const inWindow = (x: number, y: number, z: number): boolean => {
-    const angle = Math.atan2(x, z);
-    if (Math.abs(angle) > windowHalfAngle) return false;
-    const side = angle / windowHalfAngle;
-    return y / radius < brow - 0.32 * side * side;
-  };
-
-  // Cut the window out of the closed shell, so the crown stays covered.
-  const index = shell.index;
-  if (index) {
-    const kept: number[] = [];
-    for (let i = 0; i < index.count; i += 3) {
-      const tri = [index.getX(i), index.getX(i + 1), index.getX(i + 2)];
-      let cx = 0;
-      let cy = 0;
-      let cz = 0;
-      for (const v of tri) {
-        cx += pos.getX(v) / 3;
-        cy += pos.getY(v) / 3;
-        cz += pos.getZ(v) / 3;
-      }
-      if (!inWindow(cx, cy, cz)) kept.push(...tri);
-    }
-    shell.setIndex(kept);
-  }
+  // Keep the undeformed sphere position on each vertex; the material cuts the window from it.
+  shell.setAttribute('aSphere', new THREE.BufferAttribute(Float32Array.from(pos.array as Float32Array), 3));
 
   for (let i = 0; i < pos.count; i++) {
     let x = pos.getX(i);
@@ -150,10 +126,25 @@ export function createHood(color: number, eyeColor: number): Hood {
   }
   shell.computeVertexNormals();
 
-  const shellMesh = new THREE.Mesh(
-    shell,
-    new THREE.MeshStandardMaterial({ color, roughness: 0.88, side: THREE.DoubleSide }),
-  );
+  // The face window is cut per pixel, so its edge is a clean arch instead of stair-stepped
+  // triangles: full brow height in the middle, curving down at the sides.
+  const shellMaterial = new THREE.MeshStandardMaterial({ color, roughness: 0.88, side: THREE.DoubleSide });
+  shellMaterial.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aSphere;\nvarying vec3 vSphere;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSphere = aSphere;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vSphere;')
+      .replace(
+        'void main() {',
+        `void main() {
+          float hoodAngle = atan(vSphere.x, vSphere.z);
+          float hoodSide = hoodAngle / ${windowHalfAngle.toFixed(3)};
+          if (abs(hoodSide) < 1.0 && vSphere.y / ${radius.toFixed(3)} < ${brow.toFixed(3)} - 0.32 * hoodSide * hoodSide) discard;`,
+      );
+  };
+
+  const shellMesh = new THREE.Mesh(shell, shellMaterial);
   shellMesh.scale.set(1, 1.08, 1.1);
   shellMesh.castShadow = true;
   group.add(shellMesh);

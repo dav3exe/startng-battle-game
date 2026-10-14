@@ -11,9 +11,13 @@ export const TUNING = {
     speed: 9,
     invulnerableFromS: 0.05,
     invulnerableToS: 0.35,
-    cooldownS: 0.6,
+    cooldownS: 0.1,
+    // A second press this soon after the dash starts is a double tap: roll on after the dash.
+    rollWindowS: 0.22,
+    // A later press throws a fresh dash from this point, so dashes can be chained quickly.
+    chainAtS: 0.25,
   },
-  // Pressing dash again while dashing rolls on after it.
+  // Roll that follows a double-tapped dash.
   roll: {
     durationS: 0.6,
     speed: 6.5,

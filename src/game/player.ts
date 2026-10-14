@@ -32,8 +32,10 @@ export class Player {
   private swingSide: 1 | -1 = 1;
   private lastSlashEndedAt = -Infinity;
   private verticalSpeed = 0;
-  // Dash was pressed again mid-dash: roll on when the dash ends.
+  // Dash double-tapped: roll on when the dash ends.
   private rollQueued = false;
+  // Dash pressed again later: start a fresh dash as soon as allowed.
+  private dashQueued = false;
   private readonly aimPoint = new THREE.Vector3(0, 1.4, 10);
   private readonly dodgeDir = new THREE.Vector3();
   private readonly velocity = new THREE.Vector3();
@@ -75,7 +77,12 @@ export class Player {
     const wishAmount = Math.min(1, wish.length());
     if (wishAmount > 0) wish.normalize();
 
-    if (this.action === 'dodge' && input.dodge) this.rollQueued = true;
+    if (input.dodge && this.action === 'dodge') {
+      if (this.actionTime <= TUNING.dodge.rollWindowS) this.rollQueued = true;
+      else this.dashQueued = true;
+    }
+    if (input.dodge && this.action === 'roll') this.dashQueued = true;
+    if (this.action === 'dodge' && this.dashQueued && !this.rollQueued && this.actionTime >= TUNING.dodge.chainAtS) this.startDash(wish);
     const busy = this.action === 'dodge' || this.action === 'roll' || this.action === 'cannon';
     if (input.jump && this.grounded && !busy) this.verticalSpeed = TUNING.jump.speed;
 
@@ -145,9 +152,7 @@ export class Player {
     const wasSlashing = this.action === 'slash';
     if (input.dodge && this.dodgeCooldown === 0 && this.grounded) {
       if (wasSlashing) this.lastSlashEndedAt = now;
-      this.begin('dodge');
-      const back = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).negate();
-      this.dodgeDir.copy(wish.lengthSq() > 0.01 ? wish : back).normalize();
+      this.startDash(wish);
       return;
     }
     if (input.light) {
@@ -173,6 +178,14 @@ export class Player {
     this.boltsFired = 0;
     this.actionDone = false;
     this.rollQueued = false;
+    this.dashQueued = false;
+  }
+
+  // Dash where the stick points, or backwards with no input.
+  private startDash(wish: THREE.Vector3): void {
+    this.begin('dodge');
+    const back = new THREE.Vector3(Math.sin(this.facing), 0, Math.cos(this.facing)).negate();
+    this.dodgeDir.copy(wish.lengthSq() > 0.01 ? wish : back).normalize();
   }
 
   private runAction(dt: number, now: number): void {
@@ -216,7 +229,9 @@ export class Player {
 
     if (this.action === 'dodge' && t >= TUNING.dodge.durationS) {
       if (this.rollQueued) {
+        const queued = this.dashQueued;
         this.begin('roll');
+        this.dashQueued = queued;
         return;
       }
       this.action = 'none';
@@ -224,6 +239,10 @@ export class Player {
     }
 
     if (this.action === 'roll' && t >= TUNING.roll.durationS) {
+      if (this.dashQueued) {
+        this.startDash(this.dodgeDir.clone());
+        return;
+      }
       this.action = 'none';
       this.dodgeCooldown = TUNING.dodge.cooldownS;
     }
