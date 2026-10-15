@@ -1,5 +1,5 @@
 node_modules
-dist
+# dist/ is committed: start.ng publishes the built game from it (run npm run build first)
 .env
 .env.*
 !.env.example
