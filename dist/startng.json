@@ -1,0 +1,8 @@
+{
+  "leaderboard": {
+    "stats": [
+      { "key": "waves", "label": "Waves survived", "order": "highest" },
+      { "key": "kills", "label": "Zombies slain", "order": "highest" }
+    ]
+  }
+}
